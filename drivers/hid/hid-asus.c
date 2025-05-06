@@ -646,13 +646,17 @@ static int asus_kbd_register_leds(struct hid_device *hdev)
 			return ret;
 
 		/* The LED endpoint is initialised in two HID */
-		ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID1);
-		if (ret < 0)
-			return ret;
 
-		ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID2);
-		if (ret < 0)
-			return ret;
+		/* On most devices, the LED endpoint is initialised in two HID */
+		if (!(drvdata->quirks & QUIRK_ZENBOOK_DUO_KEYBOARD)) {
+			ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID1);
+			if (ret < 0)
+				return ret;
+
+			ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID2);
+			if (ret < 0)
+				return ret;
+		}
 
 		if (dmi_match(DMI_PRODUCT_FAMILY, "ProArt P16")) {
 			ret = asus_kbd_disable_oobe(hdev);
