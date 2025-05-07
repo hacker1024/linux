@@ -147,6 +147,7 @@ static struct quirk_entry quirk_asus_ignore_fan = {
 };
 
 static struct quirk_entry quirk_asus_zenbook_duo_kbd = {
+	.wmi_ignore_screenpad = true,
 	.ignore_key_wlan = true,
 };
 
