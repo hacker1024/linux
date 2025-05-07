@@ -4799,7 +4799,9 @@ static int asus_wmi_add(struct platform_device *pdev)
 	} else if (asus->driver->quirks->wmi_backlight_set_devstate)
 		err = asus_wmi_set_devstate(ASUS_WMI_DEVID_BACKLIGHT, 2, NULL);
 
-	if (asus_wmi_dev_is_present(asus, ASUS_WMI_DEVID_SCREENPAD_LIGHT)) {
+	if (asus->driver->quirks->wmi_ignore_screenpad) {
+		pr_info("Skipping check for WMI screenpad device. It is manually disabled.\n");
+	} else if (asus_wmi_dev_is_present(asus, ASUS_WMI_DEVID_SCREENPAD_LIGHT)) {
 		err = asus_screenpad_init(asus);
 		if (err && err != -ENODEV)
 			goto fail_screenpad;
