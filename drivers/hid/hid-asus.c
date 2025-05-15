@@ -1314,8 +1314,13 @@ static const __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 			rsize_orig = 306;
 			offs = 291;
 		} else if (drvdata->quirks & QUIRK_ZENBOOK_DUO_KEYBOARD) {
-			rsize_orig = 257;
-			offs = 176;
+			if (hid_is_usb(hdev)) {
+				rsize_orig = 90;
+				offs = 66;
+			} else /* Bluetooth */ {
+				rsize_orig = 257;
+				offs = 176;
+			}
 		}
 
 		/*
