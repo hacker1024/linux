@@ -30,6 +30,7 @@
 #include <linux/input/mt.h>
 #include <linux/usb.h> /* For to_usb_interface for T100 touchpad intf check */
 #include <linux/power_supply.h>
+#include <linux/platform_profile.h>
 #include <linux/leds.h>
 
 #include "hid-ids.h"
@@ -324,6 +325,11 @@ static int asus_event(struct hid_device *hdev, struct hid_field *field,
 		// Some reports do not map directly to standard keys, and need special
 		// handling.
 		switch (usage->hid & HID_USAGE) {
+			case 0x9d:
+				if (!value)
+					break;
+				return platform_profile_cycle();
+				break;
 			default:
 				hid_warn(hdev, "Unmapped Asus vendor usagepage code 0x%02x\n",
 					 usage->hid & HID_USAGE);
