@@ -1280,6 +1280,28 @@ static void asus_remove(struct hid_device *hdev)
 	hid_hw_stop(hdev);
 }
 
+// Some USB keyboards, like the Zenbook Duo UX8406MA keyboard, have a dedicated
+// USB interface for vendor-specific reports, separate to the generic HID
+// keyboard or consumer control interfaces.
+//
+// The kernel does not register these vendor-specific interfaces as keyboards,
+// or perform input mapping on them at all.
+//
+// To work around this, a fake keyboard input can be added to the
+// vendor-specific interface's report descriptor. The kernel then combines it
+// with the vendor-specific collections, and allows the interface to be used as
+// a regular keyboard with our custom mappings.
+static const __u8 asus_fake_keyboard_rdesc[] = {
+	0x05, 0x01, // Usage Page (Generic Desktop)
+	0x09, 0x06, // Usage (Keyboard)
+	0xa1, 0x01, // Collection (Application)
+	0x85, 0x01, //   Report ID (1)
+	0x75, 0x08, //   Report Size (8)
+	0x95, 0x01, //   Report Count (1)
+	0x81, 0x00, //   Input (Data,Arr,Abs)
+	0xc0,       // End Collection
+};
+
 static const __u8 asus_g752_fixed_rdesc[] = {
         0x19, 0x00,			/*   Usage Minimum (0x00)       */
         0x2A, 0xFF, 0x00,		/*   Usage Maximum (0xFF)       */
@@ -1349,6 +1371,26 @@ static const __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 			rdesc[offs + 3] = 0xff;
 			rdesc[offs + 14] = 0x00;
 		}
+	}
+
+	if ((drvdata->quirks & QUIRK_ZENBOOK_DUO_KEYBOARD) &&
+	    hid_is_usb(hdev) &&
+	    to_usb_interface(hdev->dev.parent)->altsetting->desc.bInterfaceNumber == 4) {
+
+		__u8 *new_rdesc;
+		size_t new_size = *rsize + sizeof(asus_fake_keyboard_rdesc);
+
+		new_rdesc = devm_kzalloc(&hdev->dev, new_size, GFP_KERNEL);
+		if (new_rdesc == NULL)
+			return rdesc;
+
+		hid_info(hdev, "Injecting virtual Zenbook Duo keyboard usage page\n");
+
+		memcpy(new_rdesc, asus_fake_keyboard_rdesc, sizeof(asus_fake_keyboard_rdesc));
+		memcpy(new_rdesc + sizeof(asus_fake_keyboard_rdesc), rdesc, *rsize);
+
+		*rsize = new_size;
+		rdesc = new_rdesc;
 	}
 
 	if (drvdata->quirks & QUIRK_G752_KEYBOARD &&
