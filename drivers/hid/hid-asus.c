@@ -1416,14 +1416,19 @@ static const __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		/*
 		 * Change Usage (76h) to Usage Minimum (00h), Usage Maximum
 		 * (FFh) and clear the flags in the Input() byte.
-		 * Note the descriptor has a bogus 0 byte at the end so we
-		 * only need 1 extra byte.
 		 */
 		if (*rsize == rsize_orig &&
 			rdesc[offs] == 0x09 && rdesc[offs + 1] == 0x76) {
 			__u8 *new_rdesc;
+            unsigned int new_rsize = rsize_orig;
 
-			new_rdesc = devm_kzalloc(&hdev->dev, rsize_orig + 1,
+			// Clear bogus trailing zero bytes.
+			while (rdesc[new_rsize + 1] == 0)
+				--new_rsize;
+            // Make room for the added bytes.
+			new_rsize += 2;
+
+            new_rdesc = devm_kzalloc(&hdev->dev, new_rsize,
 						 GFP_KERNEL);
 			if (!new_rdesc)
 				return rdesc;
@@ -1433,8 +1438,8 @@ static const __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 				"T100CHI" : drvdata->quirks & QUIRK_T90CHI ?
 				"T90CHI" : "ZENBOOK DUO");
 
-			memcpy(new_rdesc, rdesc, rsize_orig);
-			*rsize = rsize_orig + 1;
+			memcpy(new_rdesc, rdesc, new_rsize);
+			*rsize = new_rsize;
 			rdesc = new_rdesc;
 
 			memmove(rdesc + offs + 4, rdesc + offs + 2, 12);
