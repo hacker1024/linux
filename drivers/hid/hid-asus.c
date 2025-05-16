@@ -1326,12 +1326,14 @@ static const __u8 *asus_report_fixup(struct hid_device *hdev, __u8 *rdesc,
 		/*
 		 * Change Usage (76h) to Usage Minimum (00h), Usage Maximum
 		 * (FFh) and clear the flags in the Input() byte.
-		 * Note the descriptor has a bogus 0 byte at the end so we
-		 * only need 1 extra byte.
 		 */
 		if (*rsize == rsize_orig &&
 			rdesc[offs] == 0x09 && rdesc[offs + 1] == 0x76) {
-			*rsize = rsize_orig + 1;
+			// Clear bogus trailing zero bytes.
+			while (rdesc[*rsize + 1] == 0)
+				--*rsize;
+
+			*rsize += 2;
 			rdesc = kmemdup(rdesc, *rsize, GFP_KERNEL);
 			if (!rdesc)
 				return NULL;
