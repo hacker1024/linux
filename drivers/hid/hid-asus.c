@@ -735,23 +735,19 @@ static int asus_kbd_register_leds(struct hid_device *hdev)
 	int ret;
 
 	if (drvdata->quirks & QUIRK_ROG_NKEY_KEYBOARD) {
-		/* Initialize keyboard */
+			/* Initialize keyboard */
 		ret = asus_kbd_init(hdev, FEATURE_KBD_REPORT_ID);
 		if (ret < 0)
 			return ret;
 
 		/* The LED endpoint is initialised in two HID */
+		ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID1);
+		if (ret < 0)
+			return ret;
 
-		/* On most devices, the LED endpoint is initialised in two HID */
-		if (!(drvdata->quirks & QUIRK_ZENBOOK_DUO_KEYBOARD)) {
-			ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID1);
-			if (ret < 0)
-				return ret;
-
-			ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID2);
-			if (ret < 0)
-				return ret;
-		}
+		ret = asus_kbd_init(hdev, FEATURE_KBD_LED_REPORT_ID2);
+		if (ret < 0)
+			return ret;
 
 		if (dmi_match(DMI_PRODUCT_FAMILY, "ProArt P16")) {
 			ret = asus_kbd_disable_oobe(hdev);
@@ -1570,12 +1566,10 @@ static const struct hid_device_id asus_devices[] = {
 	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_ROG_NKEY_KEYBOARD },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
 	    USB_DEVICE_ID_ASUSTEK_ZENBOOK_DUO_KEYBOARD),
-	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_ROG_NKEY_KEYBOARD | QUIRK_USE_KBD_FNLOCK |
-	  	QUIRK_ZENBOOK_DUO_KEYBOARD },
+	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_USE_KBD_FNLOCK | QUIRK_ZENBOOK_DUO_KEYBOARD },
 	{ HID_BLUETOOTH_DEVICE(USB_VENDOR_ID_ASUSTEK,
 	    BT_DEVICE_ID_ASUSTEK_ZENBOOK_DUO_KEYBOARD),
-	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_ROG_NKEY_KEYBOARD | QUIRK_USE_KBD_FNLOCK |
-	  	QUIRK_ZENBOOK_DUO_KEYBOARD },
+	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_USE_KBD_FNLOCK | QUIRK_ZENBOOK_DUO_KEYBOARD },
 	{ HID_USB_DEVICE(USB_VENDOR_ID_ASUSTEK,
 	    USB_DEVICE_ID_ASUSTEK_ROG_NKEY_ALLY),
 	  QUIRK_USE_KBD_BACKLIGHT | QUIRK_ROG_NKEY_KEYBOARD | QUIRK_ROG_ALLY_XPAD},
