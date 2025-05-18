@@ -620,7 +620,7 @@ static bool asus_kbd_wmi_led_control_present(struct hid_device *hdev)
 	if (!IS_ENABLED(CONFIG_ASUS_WMI))
 		return false;
 
-	if (drvdata->quirks & QUIRK_ROG_NKEY_KEYBOARD &&
+	if (drvdata->quirks & QUIRK_USE_KBD_BACKLIGHT &&
 			dmi_check_system(asus_use_hid_led_dmi_ids)) {
 		hid_info(hdev, "using HID for asus::kbd_backlight\n");
 		return false;
