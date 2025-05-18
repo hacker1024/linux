@@ -127,7 +127,7 @@ struct asus_drvdata {
 	struct input_dev *tp_kbd_input;
 	struct asus_kbd_leds *kbd_backlight;
 	const struct asus_touchpad_info *tp;
-	bool enable_backlight;
+	bool has_vendor_up;
 	struct power_supply *battery;
 	struct power_supply_desc battery_desc;
 	int battery_capacity;
@@ -940,7 +940,8 @@ static int asus_input_configured(struct hid_device *hdev, struct hid_input *hi)
 
 	drvdata->input = input;
 
-	if (drvdata->enable_backlight &&
+	if (drvdata->has_vendor_up &&
+		drvdata->quirks & QUIRK_USE_KBD_BACKLIGHT &&
 	    !asus_kbd_wmi_led_control_present(hdev) &&
 	    asus_kbd_register_leds(hdev))
 		hid_warn(hdev, "Failed to initialize backlight.\n");
@@ -1031,13 +1032,12 @@ static int asus_input_mapping(struct hid_device *hdev,
 		}
 
 		/*
-		 * Check and enable backlight only on devices with UsagePage ==
+		 * Check and enable certain features only on devices with UsagePage ==
 		 * 0xff31 to avoid initializing the keyboard firmware multiple
 		 * times on devices with multiple HID descriptors but same
 		 * PID/VID.
 		 */
-		if (drvdata->quirks & QUIRK_USE_KBD_BACKLIGHT)
-			drvdata->enable_backlight = true;
+		drvdata->has_vendor_up = true;
 
 		set_bit(EV_REP, hi->input->evbit);
 		return 1;
