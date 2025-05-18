@@ -91,6 +91,7 @@ MODULE_DESCRIPTION("Asus HID Keyboard and TouchPad");
 #define QUIRK_ROG_CLAYMORE_II_KEYBOARD BIT(12)
 #define QUIRK_ROG_ALLY_XPAD		BIT(13)
 #define QUIRK_ZENBOOK_DUO_KEYBOARD	BIT(14)
+#define QUIRK_USE_KBD_FNLOCK		BIT(15)
 
 #define I2C_KEYBOARD_QUIRKS			(QUIRK_FIX_NOTEBOOK_REPORT | \
 						 QUIRK_NO_INIT_REPORTS | \
@@ -106,6 +107,14 @@ struct asus_kbd_leds {
 	struct hid_device *hdev;
 	struct work_struct work;
 	unsigned int brightness;
+	spinlock_t lock;
+	bool removed;
+};
+
+struct asus_kbd_fnlock {
+	struct hid_device *hdev;
+	struct work_struct work;
+	bool locked;
 	spinlock_t lock;
 	bool removed;
 };
@@ -134,8 +143,11 @@ struct asus_drvdata {
 	int battery_stat;
 	bool battery_in_query;
 	unsigned long battery_next_query;
+	struct asus_kbd_fnlock *fnlock;
 };
 
+static void asus_kbd_fnlock_set(struct asus_kbd_fnlock *fnlock, bool locked);
+static bool asus_kbd_fnlock_get(struct asus_kbd_fnlock *fnlock);
 static int asus_report_battery(struct asus_drvdata *, u8 *, int);
 
 static const struct asus_touchpad_info asus_i2c_tp = {
@@ -325,6 +337,14 @@ static int asus_event(struct hid_device *hdev, struct hid_field *field,
 		// Some reports do not map directly to standard keys, and need special
 		// handling.
 		switch (usage->hid & HID_USAGE) {
+			case 0x4e:
+				if (!value)
+					break;
+				struct asus_drvdata *drvdata = hid_get_drvdata(hdev);
+				if (!drvdata->fnlock)
+					break;
+				asus_kbd_fnlock_set(drvdata->fnlock, !asus_kbd_fnlock_get(drvdata->fnlock));
+				break;
 			case 0x9d:
 				if (!value)
 					break;
@@ -467,6 +487,69 @@ static int asus_kbd_disable_oobe(struct hid_device *hdev)
 	}
 
 	hid_info(hdev, "Disabled OOBE for keyboard\n");
+	return 0;
+}
+
+static void asus_schedule_fnlock_work(struct asus_kbd_fnlock *fnlock)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&fnlock->lock, flags);
+	if (!fnlock->removed)
+		schedule_work(&fnlock->work);
+	spin_unlock_irqrestore(&fnlock->lock, flags);
+}
+
+static void asus_kbd_fnlock_work(struct work_struct *work)
+{
+	struct asus_kbd_fnlock *fnlock = container_of(work, struct asus_kbd_fnlock, work);
+	u8 buf[] = { FEATURE_KBD_REPORT_ID, 0xd0, 0x4e, fnlock->locked };
+	int ret;
+	ret = asus_kbd_set_report(fnlock->hdev, buf, sizeof(buf));
+	if (ret < 0)
+		hid_err(fnlock->hdev, "Failed to set Fn-lock: %d\n", ret);
+	else
+		hid_info(fnlock->hdev, "Fn-lock %s.\n", fnlock->locked ? "enabled" : "disabled");
+}
+
+static void asus_kbd_fnlock_set(struct asus_kbd_fnlock *fnlock, bool locked)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&fnlock->lock, flags);
+	fnlock->locked = locked;
+	spin_unlock_irqrestore(&fnlock->lock, flags);
+
+	asus_schedule_fnlock_work(fnlock);
+}
+
+static bool asus_kbd_fnlock_get(struct asus_kbd_fnlock *fnlock)
+{
+	bool locked;
+	unsigned long flags;
+
+	spin_lock_irqsave(&fnlock->lock, flags);
+	locked = fnlock->locked;
+	spin_unlock_irqrestore(&fnlock->lock, flags);
+
+	return locked;
+}
+
+static int asus_kbd_register_fnlock(struct hid_device *hdev)
+{
+	struct asus_drvdata *drvdata = hid_get_drvdata(hdev);
+	drvdata->fnlock = devm_kzalloc(&hdev->dev,
+				      sizeof(struct asus_kbd_fnlock),
+				      GFP_KERNEL);
+	if (!drvdata->fnlock)
+		return -ENOMEM;
+
+	drvdata->fnlock->removed = false;
+	drvdata->fnlock->locked = false;
+	drvdata->fnlock->hdev = hdev;
+	INIT_WORK(&drvdata->fnlock->work, asus_kbd_fnlock_work);
+	spin_lock_init(&drvdata->fnlock->lock);
+
 	return 0;
 }
 
@@ -946,6 +1029,11 @@ static int asus_input_configured(struct hid_device *hdev, struct hid_input *hi)
 	    asus_kbd_register_leds(hdev))
 		hid_warn(hdev, "Failed to initialize backlight.\n");
 
+	if (drvdata->has_vendor_up &&
+		drvdata->quirks & QUIRK_USE_KBD_FNLOCK && 
+	    asus_kbd_register_fnlock(hdev))
+		hid_warn(hdev, "Failed to initialize Fn-lock.\n");
+
 	return 0;
 }
 
@@ -993,7 +1081,6 @@ static int asus_input_mapping(struct hid_device *hdev,
 		case 0xc4: asus_map_key_clear(KEY_KBDILLUMUP);		break;
 		case 0xc5: asus_map_key_clear(KEY_KBDILLUMDOWN);		break;
 		case 0xc7: asus_map_key_clear(KEY_KBDILLUMTOGGLE);	break;
-		case 0x4e: asus_map_key_clear(KEY_FN_ESC);		break;
 		case 0x7e: asus_map_key_clear(KEY_EMOJI_PICKER);	break;
 
 		case 0x8b: asus_map_key_clear(KEY_PROG1);	break; /* ProArt Creator Hub key */
@@ -1287,6 +1374,14 @@ static void asus_remove(struct hid_device *hdev)
 		spin_unlock_irqrestore(&drvdata->kbd_backlight->lock, flags);
 
 		cancel_work_sync(&drvdata->kbd_backlight->work);
+	}
+
+	if (drvdata->fnlock) {
+		spin_lock_irqsave(&drvdata->fnlock->lock, flags);
+		drvdata->fnlock->removed = true;
+		spin_unlock_irqrestore(&drvdata->fnlock->lock, flags);
+
+		cancel_work_sync(&drvdata->fnlock->work);
 	}
 
 	hid_hw_stop(hdev);
